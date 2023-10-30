@@ -1,0 +1,232 @@
+---
+title: "Bakery Analysis"
+author: "Rica Rebusit"
+date: "2023-10-29"
+output:
+  html_document:
+    df_print: paged
+---
+
+I will be using this dataset from Kaggle -> ![Click Me!]("https://www.kaggle.com/datasets/matthieugimbert/french-bakery-daily-sales/") to analyze and forecast sales of a french bakery from 2021 to 2022 based on:
+
+date: Date order
+time: Time order
+ticket number: Identifier for every single transaction
+article: Name of the product sold
+quantity: quantity sold
+unit_price: price per product (In Euros)
+
+There are 234,005 observations in the dataset as well.
+
+# Loading Necessary Libraries and Importing Data
+
+```{r, warning = FALSE}
+library(tidyverse)
+library(gridExtra)
+```
+
+```{r}
+bakery <- read.csv("Bakery sales.csv")
+```
+
+# EDA and Data Cleaning
+
+```{r}
+head(bakery)
+```
+```{r}
+str(bakery)
+```
+
+```{r}
+summary(bakery)
+```
+
+
+Checking for missing values
+```{r}
+sum(is.na(bakery))
+#No missing values
+```
+
+Checking for duplicated rows
+```{r}
+sum(duplicated(bakery))
+#No duplicated rows
+```
+
+Cleaning up variable names
+```{r}
+bakery <- select(bakery, -("X")) %>% #Dropping unnecessary column
+  rename(quantity = Quantity) #Rename column Quantity with a lowercase q to keep variable uniformity
+head(bakery)
+```
+
+Convert *unit_price* to numeric for analysis and sale forecasting. First getting rid of Euro symbol and replacing comma with a period
+```{r}
+bakery$unit_price <- gsub(" €", " ", bakery$unit_price) #Replaces Euro with empty space
+bakery$unit_price <- gsub(",", ".", bakery$unit_price) #Replaces comma with period
+head(bakery)
+```
+
+Now we can convert *unit_price* to numeric
+```{r}
+bakery$unit_price <- as.numeric(bakery$unit_price)
+head(bakery)
+```
+
+Calculating total of each purchase
+```{r}
+bakery <- mutate(bakery, total = unit_price * quantity) #Mutate creates a new column
+head(bakery)
+```
+
+For analysis, creating columns that separate date into year, month, day, and day name
+```{r}
+bakery$date <- as.Date(bakery$date)
+bakery <- mutate(bakery, 
+    year = format(bakery$date, "%Y"),
+    month = format(bakery$date, "%m"),
+    day = format(bakery$date, "%d"),
+    day_name = format(bakery$date, "%A"))
+head(bakery)
+```
+
+Checking for outliers
+```{r}
+grid.arrange(
+  ggplot(bakery, aes(quantity)) + geom_boxplot(),
+  ggplot(bakery, aes(total)) + geom_boxplot(),
+  ncol = 2 
+) 
+```
+
+It seems there is a negative value for qunatity and total, needs to be dropped
+```{r}
+bakery <- filter(bakery, !(quantity <= 0 | total <= 0))
+head(bakery)
+```
+
+Since the dataset provides years 2021 and 2022, let's look at total in both years
+```{r}
+ggplot(bakery, aes(year, total, fill = year)) + geom_bar(stat = "Identity") + theme_minimal() + scale_fill_brewer(palette = "Accent") + labs(title = "Total Revenue (Year)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5))
+```
+
+In months
+```{r}
+ggplot(bakery, aes(month, total, fill = month)) + geom_bar(stat = "Identity") + theme_minimal() + labs(title = "Total Revenue (Month)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5))
+```
+
+In days
+```{r}
+ggplot(bakery, aes(day_name, total, fill = day_name)) + geom_bar(stat = "Identity") + theme_minimal() + labs(title = "Total Revenue (Day)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5))
+```
+
+Comparing total revenue of both years
+```{r}
+ggplot(bakery, aes(month, total, fill = month)) + geom_bar(stat = "Identity") + facet_wrap(~ year) + labs(title = "Total Revenue (2021 vs 2022)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5))
+```
+
+Looking at products in the bakery
+```{r}
+unique(bakery$article)
+```
+
+Which are the top 10 products?
+```{r}
+top10 <- bakery %>%
+  group_by(article) %>%
+  summarise(total = sum(total)) %>%
+  arrange(desc(total)) %>%
+  head(10)
+top10
+```
+
+Looking at total from top 10
+```{r}
+ggplot(top10, aes(article, total, fill = article)) + geom_bar(stat = "Identity") + theme_minimal() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + labs(title = "Total (Top 10)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5))
+```
+
+Which are the bottom 10 products?
+```{r}
+bottom10 <- bakery %>%
+  group_by(article) %>%
+  summarise(total = sum(total)) %>%
+  arrange(total) %>%
+  head(10)
+bottom10
+```
+Looking at bottom 10 products
+```{r}
+ggplot(bottom10, aes(article, total, fill = article)) + geom_bar(stat = "Identity") + theme_minimal() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + labs(title = "Total (Bottom 10)") + theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5))
+```
+
+What is the revenue growth?
+
+```{r}
+bakery_jan_sept <- filter(bakery, month %in% c("01","02","03","04","05","06","07","08","09")) #Choosing months January-September because 2022 only goes up to September
+bakery_jan_sept <- filter(bakery_jan_sept, year == "2021")
+rev2021 <- sum(bakery_jan_sept[bakery_jan_sept$year == "2021", "total"], na.rm = TRUE)
+rev2021
+```
+
+2022 revenue
+```{r}
+bakery2022 <- filter(bakery, year == "2022")
+rev2022 <- sum(bakery2022[bakery2022$year == "2022", "total"], na.rm = TRUE)
+rev2022
+```
+
+Calculating revenue growth
+```{r}
+revenue_growth <- ((rev2022 - rev2021) / rev2021) * 100
+revenue_growth
+```
+
+Comparing the revenue growth from 2021 and 2022 of months January-September there is a 4.34% revenue growth. There is a possible assumption that the revenue growth would be higher if we had sales for October-December in 2022
+
+# Forecasting Sales
+
+Predicting future sales with quantity and total as the dependent variables
+
+### Train and Test Data
+
+It is a large dataset so it's best to do 80-20 split
+```{r}
+tra.tes <- sample(nrow(bakery), 0.8*nrow(bakery))
+train <- bakery[tra.tes, ]
+test <- bakery[-tra.tes, ]
+```
+
+### Linear Regression - Model Building
+
+```{r}
+bakery
+```
+
+
+To predict future sales, I will be using linear regression.
+```{r}
+set.seed(123)
+#First with quantity as dependent variable
+lm.quantity <- lm(quantity ~ article + unit_price + total + year + month + day_name, data = train)
+
+#Now with total as dependent variable
+lm.total <- lm(total ~ article + unit_price + quantity + year + month + day_name, data = train)
+summary(lm.total)
+```
+
+# Linear Regression - Evaluation
+
+```{r}
+summary(lm.quantity)
+```
+The R-squared value is 75.03% the model fairly learned the relationships well
+
+```{r}
+summary(lm.total)
+```
+
+The R-squared is 88.02% which also seems to learn the relationships well. Better than the first model.
+
+
